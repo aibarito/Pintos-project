@@ -1,0 +1,171 @@
+         +--------------------------+
+                     |    CS 140    |
+         | PROJECT 2: USER PROGRAMS |
+         |     DESIGN DOCUMENT      |
+         +--------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+FirstName LastName <email@domain.example>
+FirstName LastName <email@domain.example>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+         ARGUMENT PASSING
+         ================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+ANSWER:
+1) When we call wait function, we want current process to stop execution and start child process. To do so, we use semaphores in the following way: when we created the child we initialize semaphore of current (parent) thread to 0 (this is why we need sema structue saved in thread structure), decrease the semaphore and wait until it becomes 0 again. And this semaphore becomes 0 again only after child thread finishes its job, so when it is exited we want the semaphore to be 0 again. This is why we have to save pointer to the parent thread for child thread, because we need somehow get the access to parent thread in order to get access to parent's semaphore.
+  Added members to struct thread :
+    1. bool has_parent = indicates whether this thread has parent. Used in thread_exit() and initialized to true in process_exit() 
+    2. tid_t parent_tid = stores the id of parent if there is one. Used to get access to the the_sema semaphore of parent, in order to up the_sema
+    3. struct sema the_sema = semaphore used for synchronization between child and parent (when parent should wait for child)
+  
+2) Added member int exit_status to thread structure to store its exit_status and printed in thread_exit() to the console. It is equal to 0 by default, which means normal execution of thread and changed to -1 if the thread caused some error (for ex passed bad pointer to f->eax).
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+>> How do you avoid overflowing the stack page?
+
+ANSWER:
+For argument parsing we used given strtok_r function. We first created temporary char* variable (file_name_temp) which is the copy of file_name, and then we used this variable to loop the file_name once to find out how much arguments do we have. After knowing the number of varibales = size, we create char* array with know size. And with another loop we added our arguments to the array so we can know index of each argument. 
+To avoid overflow, we started from the very top of the stack in order to have enough space. We also wanted to check the pointer *esp for validity every time we increment it, but since the memory space is large enough for this project, we did not include it
+
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+ANSWER: 
+Because strtok_r() can be preemted and then resumed properly
+
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+
+ANSWER: 
+1) there is less code in kernel, so less buggy
+2) less time consuming
+
+
+           SYSTEM CALLS
+           ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+ANSWER:
+1) Added new structure called file_structure in order to make mapping of open file to the fd. It has 3 members: 
+    1. struct file* the_file = pointer to file
+    2. int fd = fd of the_file
+    3. struct list_elem file_list_elem = element that stores this structure file_structure in the list which is held by current thread.
+2) Added following members to struct thread:
+    1. int max_fd = it is the fd that can be assigned to new opened file. Since fd of file cant be 0 or 1, it is initialized to 2, and every time new file is opened we store max_fd = fd of new opened file, and increment max_fd for future files
+    2. list list_of_file_struct = stores the list of opened files that are held by current thread. It is essentially list of file_struct
+  
+
+>> B2: Describe how file descriptors are associated with open files.
+>> Are file descriptors unique within the entire OS or just within a
+>> single process?
+
+ANSWER:
+1) We created a structure for an open file => struct file_structure. It has 3 memebers: the_file, fd, list_elem and as we said thread contains 2 members: max_fd, and list_of_file_struct. So, when we open a file, we create a new struct file_struct, and we store the opened file in the the_file. To map this file into available fd, we use max_fd which has value that can be assigned to new opened file, so we store this available fd into fd member of file_struct. Finally, the list_elem is used to store this file_structure in the list of file_structures which is held by the thread. So now we store new opened file with its fd, in the list that is held by current thread. This is the mapping.
+2) Every thread has list of the open files that are opened by this thread. But the lists of two thread are not shared, so file descriptors are unique within a single process.
+
+---- ALGORITHMS ----
+
+>> B3: Describe your code for reading and writing user data from the
+>> kernel.
+
+>> B4: Suppose a system call causes a full page (4,096 bytes) of data
+>> to be copied from user space into the kernel.  What is the least
+>> and the greatest possible number of inspections of the page table
+>> (e.g. calls to pagedir_get_page()) that might result?  What about
+>> for a system call that only copies 2 bytes of data?  Is there room
+>> for improvement in these numbers, and how much?
+
+>> B5: Briefly describe your implementation of the "wait" system call
+>> and how it interacts with process termination.
+
+
+>> B6: Any access to user program memory at a user-specified address
+>> can fail due to a bad pointer value.  Such accesses must cause the
+>> process to be terminated.  System calls are fraught with such
+>> accesses, e.g. a "write" system call requires reading the system
+>> call number from the user stack, then each of the call's three
+>> arguments, then an arbitrary amount of user memory, and any of
+>> these can fail at any point.  This poses a design and
+>> error-handling problem: how do you best avoid obscuring the primary
+>> function of code in a morass of error-handling?  Furthermore, when
+>> an error is detected, how do you ensure that all temporarily
+>> allocated resources (locks, buffers, etc.) are freed?  In a few
+>> paragraphs, describe the strategy or strategies you adopted for
+>> managing these issues.  Give an example.
+
+---- SYNCHRONIZATION ----
+
+>> B7: The "exec" system call returns -1 if loading the new executable
+>> fails, so it cannot return before the new executable has completed
+>> loading.  How does your code ensure this?  How is the load
+>> success/failure status passed back to the thread that calls "exec"?
+
+>> B8: Consider parent process P with child process C.  How do you
+>> ensure proper synchronization and avoid race conditions when P
+>> calls wait(C) before C exits?  After C exits?  How do you ensure
+>> that all resources are freed in each case?  How about when P
+>> terminates without waiting, before C exits?  After C exits?  Are
+>> there any special cases?
+
+---- RATIONALE ----
+
+>> B9: Why did you choose to implement access to user memory from the
+>> kernel in the way that you did?
+
+>> B10: What advantages or disadvantages can you see to your design
+>> for file descriptors?
+
+>> B11: The default tid_t to pid_t mapping is the identity mapping.
+>> If you changed it, what advantages are there to your approach?
+
+         SURVEY QUESTIONS
+         ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?

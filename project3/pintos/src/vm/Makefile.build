@@ -1,0 +1,5 @@
+# No virtual memory code yet.
+#vm_SRC = vm/file.c     # Some File.
+vm_SRC += vm/page.c
+vm_SRC += vm/frame.c
+vm_SRC += vm/swap.c

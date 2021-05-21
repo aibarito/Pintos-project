@@ -1,0 +1,185 @@
+			+--------------------+
+			| CS 140             |
+			| PROJECT 1: THREADS |
+			| DESIGN DOCUMENT    |
+			+--------------------+
+				   
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Oshakbayev Aibar <bratan@unist.ac.kr>
+Murat Tishkul <tishkul@unist.ac.kr>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+			     ALARM CLOCK
+			     ===========
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+ANSWER:
+1. In thread.c added 'static struct speeping_list': it is a list of sleeping threads.
+2. In 'struct thread' added list element 'sleep_elem': it is an element of thread that will be stored in sleeping_list
+3. In 'struct thread' added int64_t 'when_to_wakeup': this will store the number of ticks that the timer should reach to wake up the thread
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe what happens in a call to timer_sleep(),
+>> including the effects of the timer interrupt handler.
+
+ANSWER: 
+When timer_sleep() is called, the current running thread (let's call cur_thread) is moved into the list 'sleeping_list', and this cur_thread remembers the time when it should waken up (by setting cur_therad->when_to_wakeup = the needed time). Then, we block cur_thread by calling the thread_block() function, which removes cur_thread from runnig_list and replaces with the next ready thread. Note that since thread_block() and thread_unblock() functions are not working with interrupts ON, we have to disable interrupts before using thread_block() and thread_unblock(). Moreover, since we can not use sleeping_list in timer.c directly (because this structure is declared in thread.c which we can not include in timer.c), we want to call function thread_aibar() in timer_sleep () which does all of the mentioned processes and is declared in thread.h.
+
+Next, we know that timer_interrupt() is called on each tick. So, each tick we want to check whether there is a thread in a sleeping_list that should waken up. To do this we add a function thread_murat() in timer_interrupt() which traverses the sleeping_list and checks each thread's waking time. If the thread should waken up by a current number of ticks, we remove this thread from the sleeping_list and call unblock_function() on this thread. Unblock_function() puts the thread again in ready_list and sorts the ready_list by highest priority. We use the thread_murat() function because we want to use the list sleeping_list structure which is declared in thread.c.
+
+>> A3: What steps are taken to minimize the amount of time spent in
+>> the timer interrupt handler?
+First of all, we are using a list data structure because removing takes constant time. Then, we decided to declare and use a function called thread_murat(). This helped us to save time and effort and use the sleeping_list structure.  
+
+
+
+---- SYNCHRONIZATION ----
+
+>> A4: How are race conditions avoided when multiple threads call
+>> timer_sleep() simultaneously?
+
+>> A5: How are race conditions avoided when a timer interrupt occurs
+>> during a call to timer_sleep()?
+
+---- RATIONALE ----
+
+>> A6: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+ANSWER: 
+We first tried to block thread in timer_sleep() and wait within this function until enough time is passed and then unblock it. However, we found out that it is inefficient in terms of keeping function timer_sleep() running for too many times. And if several threads call the timer_sleep() function, then it will be unpredictable. Then we decided to not wait within the function. Also, it was obvious that we have to remove the thread from the ready_list to get rid of busy waiting. So, the only approach was to track all the sleeping threads and when the time comes, wake them up. Fortunately, we know the function that checks the current time every tick - tick_interrupt(). So, the solution is to put a sleeping thread into a sleeping list of threads and check every time if there is a thread that should waken up. This seems like the only way (or at least the most straightforward) to avoid busy waiting. 
+However, some modifications could be added, such that sorting the sleeping list to not traverse the list every tick.
+
+
+			 PRIORITY SCHEDULING
+			 ===================
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+ANSWER: 
+1) We added a new function priority_comparator(elem1, elem2): this compares two list elements based on their priority. This function is passed as an argument into given list_sort() function when sorting any list based on their priority.
+2) We changed thread_unblock() and thread_yield() functions such that after pushing thread into ready_list, they sort this list.
+3) Also we changed thread_set_priority() function such, that if the new set priority of thread is smaller than any other thread's priority, then we yield current thread with the one that has bigger priority.
+
+>> B2: Explain the data structure used to track priority donation.
+>> Use ASCII art to diagram a nested donation.  (Alternately, submit a
+>> .png file.)
+
+---- ALGORITHMS ----
+
+>> B3: How do you ensure that the highest priority thread waiting for
+>> a lock, semaphore, or condition variable wakes up first?
+
+>> B4: Describe the sequence of events when a call to lock_acquire()
+>> causes a priority donation.  How is nested donation handled?
+
+>> B5: Describe the sequence of events when lock_release() is called
+>> on a lock that a higher-priority thread is waiting for.
+
+---- SYNCHRONIZATION ----
+
+>> B6: Describe a potential race in thread_set_priority() and explain
+>> how your implementation avoids it.  Can you use a lock to avoid
+>> this race?
+
+---- RATIONALE ----
+
+>> B7: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+
+ANSWER:
+First of all, our mission is to take thread with the highest priority of the list. We considered two ways:
+1) Every time the thread is being taken from ready_list, we traverse the list and find the thread with the highest priority instead of taking the first element;
+2) Every time we put the thread to the ready_list, we put it in a sorted way, such that ready_list remains sorted, so when we take the first element, it has the highest priority.
+The first approach is inefficient and complicated because we have to change the way we access list elements, and traverse all list every time to find one with high priority. So we implemented second. To do it we changed two functions that put threads into ready_list - thread_unblock() and thread_yield(). Our first intuition was to keep the ready_list sorted, and every time we put a thread into ready_list, we put it in its right place. However, then we decided to use a given sort function to save some time. So what do we do is that every time we put the thread into the ready_list, we sort this list calling the list_sort() function, so our ready_list remains always sorted.
+
+
+
+			  ADVANCED SCHEDULER
+			  ==================
+
+---- DATA STRUCTURES ----
+
+>> C1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+---- ALGORITHMS ----
+
+>> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
+>> has a recent_cpu value of 0.  Fill in the table below showing the
+>> scheduling decision and the priority and recent_cpu values for each
+>> thread after each given number of timer ticks:
+
+timer  recent_cpu    priority   thread
+ticks   A   B   C   A   B   C   to run
+-----  --  --  --  --  --  --   ------
+ 0
+ 4
+ 8
+12
+16
+20
+24
+28
+32
+36
+
+>> C3: Did any ambiguities in the scheduler specification make values
+>> in the table uncertain?  If so, what rule did you use to resolve
+>> them?  Does this match the behavior of your scheduler?
+
+>> C4: How is the way you divided the cost of scheduling between code
+>> inside and outside interrupt context likely to affect performance?
+
+---- RATIONALE ----
+
+>> C5: Briefly critique your design, pointing out advantages and
+>> disadvantages in your design choices.  If you were to have extra
+>> time to work on this part of the project, how might you choose to
+>> refine or improve your design?
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?
